@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supermarket Management System</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- HTML5 QR / Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printable-receipt, #printable-receipt * {
+                visibility: visible;
+            }
+            #printable-receipt {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 min-h-screen flex flex-col">
+
+    <!-- TOP NAVIGATION -->
+    <header class="bg-blue-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-cart-shopping text-2xl text-yellow-400"></i>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight">SuperMarket POS & Inventory</h1>
+                    <p class="text-xs text-blue-200">Management & Checkout System</p>
+                </div>
+            </div>
+
+            <!-- Active Cashier Profile Switcher -->
+            <div class="flex items-center space-x-2 bg-blue-800 px-3 py-1.5 rounded-lg border border-blue-700">
+                <i class="fa-solid fa-user-tag text-yellow-400 text-sm"></i>
+                <span class="text-xs text-blue-200 font-medium">Cashier:</span>
+                <select id="activeCashierSelect" onchange="handleCashierChange()" class="bg-blue-900 text-white text-xs font-semibold rounded px-2 py-1 outline-none border border-blue-600 focus:ring-1 focus:ring-yellow-400">
+                    <option value="Main Cashier">Main Cashier</option>
+                    <option value="Jane Doe">Jane Doe</option>
+                    <option value="John Maina">John Maina</option>
+                    <option value="NEW">+ Add New Cashier...</option>
+                </select>
+            </div>
+
+            <!-- Tab Navigation & Lock -->
+            <div class="flex items-center space-x-2">
+                <button onclick="switchTab('pos')" id="tab-btn-pos" class="px-4 py-2 rounded-lg font-medium text-sm transition bg-yellow-500 text-gray-900 shadow font-bold">
+                    <i class="fa-solid fa-cash-register mr-1"></i> POS / Sales
+                </button>
+                <button onclick="switchTab('inventory')" id="tab-btn-inventory" class="px-4 py-2 rounded-lg font-medium text-sm transition bg-blue-800 text-white hover:bg-blue-700">
+                    <i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory
+                </button>
+                <button onclick="switchTab('manager')" id="tab-btn-manager" class="px-4 py-2 rounded-lg font-medium text-sm transition bg-blue-800 text-white hover:bg-blue-700">
+                    <i class="fa-solid fa-user-shield mr-1"></i> Manager
+                    <span id="managerLockBadge" class="ml-1 text-xs"><i class="fa-solid fa-lock text-yellow-400"></i></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- NOTIFICATION ALERTS BANNER FOR EXPIRING ITEMS -->
+    <div id="expiryAlertBanner" class="hidden bg-amber-500 text-white px-4 py-2 text-sm font-semibold flex justify-between items-center shadow-inner">
+        <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-triangle-exclamation text-lg animate-bounce"></i>
+            <span id="expiryAlertText">Warning: Some inventory items are expired or expiring within 30 days!</span>
+        </div>
+        <button onclick="switchTab('inventory')" class="underline text-xs bg-amber-700 px-2 py-1 rounded hover:bg-amber-800">View Inventory</button>
+    </div>
+
+    <!-- MAIN BODY CONTAINER -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4">
+
+        <!-- ==================== POS / SALES TAB ==================== -->
+        <section id="tab-pos" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left: Product Scanner & Search -->
+            <div class="lg:col-span-2 space-y-4">
+                <!-- Search & Scan Bar -->
+                <div class="bg-white p-4 rounded-xl shadow border border-gray-200 space-y-3">
+                    <div class="flex gap-2">
+                        <div class="relative flex-grow">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-gray-400"></i>
+                            <input type="text" id="posSearchInput" onkeyup="filterPosProducts()" placeholder="Search item name or scan barcode..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-base">
+                        </div>
+                        <button onclick="toggleCameraScanner('pos')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition">
+                            <i class="fa-solid fa-camera"></i> <span class="hidden sm:inline">Camera Scan</span>
+                        </button>
+                    </div>
+
+                    <!-- Camera Scanner Container -->
+                    <div id="scannerContainer" class="hidden border-2 border-dashed border-blue-400 p-2 rounded-lg bg-gray-50 text-center">
+                        <div id="reader" class="w-full max-w-md mx-auto"></div>
+                        <p class="text-xs text-gray-500 mt-2">Point your camera at a barcode or QR code</p>
+                        <button onclick="toggleCameraScanner('pos')" class="mt-2 text-xs text-red-600 font-bold underline">Close Camera</button>
+                    </div>
+                </div>
+
+                <!-- Product Cards Grid -->
+                <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                    <h2 class="text-lg font-bold text-gray-800 mb-3 flex justify-between items-center">
+                        <span>Available Products</span>
+                        <span id="productCountBadge" class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full">0 Items</span>
+                    </h2>
+                    <div id="posProductGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[500px] overflow-y-auto p-1">
+                        <!-- Dynamic POS Items Loaded Here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Current Sale Cart -->
+            <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col h-[600px]">
+                <div class="flex justify-between items-center border-b pb-3 mb-3">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fa-solid fa-cart-shopping text-blue-600"></i> Current Cart
+                    </h2>
+                    <button onclick="clearCart()" class="text-xs text-red-500 hover:text-red-700 font-semibold">Clear Cart</button>
+                </div>
+
+                <!-- Cart Items List -->
+                <div id="cartItemsList" class="flex-grow overflow-y-auto space-y-2 pr-1">
+                    <p class="text-gray-400 text-center text-sm my-auto py-12">No items added to cart yet.<br>Scan or click items on the left.</p>
+                </div>
+
+                <!-- Summary & Checkout Controls -->
+                <div class="border-t pt-3 mt-3 space-y-3">
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span>Total Quantity:</span>
+                        <span id="cartTotalQty" class="font-bold text-gray-800">0</span>
+                    </div>
+                    <div class="flex justify-between text-xl font-extrabold text-gray-900 border-t pt-2">
+                        <span>Total Payable:</span>
+                        <span id="cartTotalAmount" class="text-blue-700">KES 0.00</span>
+                    </div>
+
+                    <!-- Payment Mode Selection -->
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button id="payModeCash" onclick="selectPayMode('CASH')" class="py-2 border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-money-bill-wave"></i> Cash
+                        </button>
+                        <button id="payModeMpesa" onclick="selectPayMode('MPESA')" class="py-2 border-2 border-gray-200 text-gray-600 font-bold rounded-lg text-sm flex items-center justify-center gap-1 hover:border-green-500">
+                            <i class="fa-solid fa-mobile-screen-button text-green-600"></i> M-Pesa
+                        </button>
+                    </div>
+
+                    <!-- M-Pesa Input Field (Hidden by Default) -->
+                    <div id="mpesaFields" class="hidden bg-green-50 p-3 rounded-lg border border-green-200 space-y-2">
+                        <label class="block text-xs font-bold text-green-800">Customer M-Pesa Phone Number:</label>
+                        <div class="flex gap-1">
+                            <input type="text" id="mpesaPhone" placeholder="07XXXXXXXX" class="w-full text-xs p-2 border border-green-300 rounded focus:outline-none">
+                            <button onclick="triggerMpesaStkPush()" class="bg-green-600 text-white text-xs px-3 py-1 rounded font-bold hover:bg-green-700 whitespace-nowrap">STK Push</button>
+                        </div>
+                        <input type="text" id="mpesaRefCode" placeholder="M-Pesa Transaction Code (e.g. QX89...)" class="w-full text-xs p-2 border border-green-300 rounded uppercase">
+                    </div>
+
+                    <!-- Complete Sale Button -->
+                    <button onclick="completeCheckout()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-base shadow transition">
+                        Complete Sale & Print Receipt
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== INVENTORY TAB ==================== -->
+        <section id="tab-inventory" class="hidden space-y-6">
+            <!-- Header & Action Buttons -->
+            <div class="flex flex-wrap justify-between items-center gap-4 bg-white p-4 rounded-xl shadow border border-gray-200">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">Stock & Product Database</h2>
+                    <p class="text-xs text-gray-500">Register, manage, and track supermarket stock & expiry dates.</p>
+                </div>
+                <button onclick="openAddProductModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Register New Item
+                </button>
+            </div>
+
+            <!-- Inventory Search Bar -->
+            <div class="bg-white p-3 rounded-xl shadow border border-gray-200">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-gray-400"></i>
+                    <input type="text" id="inventorySearchInput" onkeyup="renderInventoryTable()" placeholder="Search item by name or barcode..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <!-- Inventory Table -->
+            <div class="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 text-gray-700 text-xs uppercase font-bold border-b border-gray-200">
+                                <th class="p-3">Barcode/QR</th>
+                                <th class="p-3">Product Name</th>
+                                <th class="p-3">Entry Price (Cost)</th>
+                                <th class="p-3">Selling Price</th>
+                                <th class="p-3">Stock Remaining</th>
+                                <th class="p-3">Expiry Date</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody" class="text-sm divide-y divide-gray-200">
+                            <!-- Dynamic Inventory Rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== MANAGER TAB ==================== -->
+        <section id="tab-manager" class="hidden space-y-6">
+            <!-- Lock Screen overlay if locked -->
+            <div id="managerLockScreen" class="bg-white p-8 rounded-xl shadow border border-gray-200 text-center max-w-md mx-auto my-12 space-y-4">
+                <div class="w-16 h-16 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <h2 class="text-xl font-bold text-gray-800">Manager Security Access</h2>
+                <p class="text-xs text-gray-500">Enter Security PIN to view daily total sales revenue, profit logs, and restricted earnings.</p>
+                <div class="space-y-2">
+                    <input type="password" id="managerPinInput" maxlength="6" placeholder="Enter PIN (Default: 1234)" class="w-full p-3 text-center border border-gray-300 rounded-lg text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    <button onclick="unlockManagerPanel()" class="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg transition">Unlock Manager Section</button>
+                </div>
+                <p class="text-xs text-gray-400">Default Security PIN is: <span class="font-bold">1234</span></p>
+            </div>
+
+            <!-- Manager Content (Hidden until PIN unlocked) -->
+            <div id="managerContent" class="hidden space-y-6">
+                <!-- Top Header -->
+                <div class="flex justify-between items-center bg-blue-900 text-white p-4 rounded-xl shadow">
+                    <div>
+                        <h2 class="text-xl font-bold">Manager Financial & Daily Sales Dashboard</h2>
+                        <p class="text-xs text-blue-200">Restricted view: Daily revenue totals, profits, and cashier audit logs.</p>
+                    </div>
+                    <button onclick="lockManagerPanel()" class="bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1 border border-blue-600">
+                        <i class="fa-solid fa-lock"></i> Lock Panel
+                    </button>
+                </div>
+
+                <!-- Financial Overview Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <p class="text-xs text-gray-500 uppercase font-semibold">Today's Total Sales</p>
+                        <h3 id="statTodaySales" class="text-2xl font-extrabold text-blue-700 mt-1">KES 0.00</h3>
+                        <p id="statTodayCount" class="text-xs text-gray-400 mt-1">0 Sales today</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <p class="text-xs text-gray-500 uppercase font-semibold">Today's Estimated Profit</p>
+                        <h3 id="statTodayProfit" class="text-2xl font-extrabold text-green-600 mt-1">KES 0.00</h3>
+                        <p class="text-xs text-green-600 mt-1"><i class="fa-solid fa-chart-line"></i> Revenue minus cost</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <p class="text-xs text-gray-500 uppercase font-semibold">M-Pesa Revenue Today</p>
+                        <h3 id="statTodayMpesa" class="text-2xl font-extrabold text-green-700 mt-1">KES 0.00</h3>
+                        <p class="text-xs text-gray-400 mt-1">Direct to Paybill/Till</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <p class="text-xs text-gray-500 uppercase font-semibold">Cash Sales Today</p>
+                        <h3 id="statTodayCash" class="text-2xl font-extrabold text-amber-600 mt-1">KES 0.00</h3>
+                        <p class="text-xs text-gray-400 mt-1">Physical Cash Drawer</p>
+                    </div>
+                </div>
+
+                <!-- Sales History Logs Table -->
+                <div class="bg-white rounded-xl shadow border border-gray-200 p-4 space-y-3">
+                    <h3 class="text-lg font-bold text-gray-800 flex justify-between items-center">
+                        <span>Completed Transactions Register</span>
+                        <button onclick="clearSalesHistory()" class="text-xs text-red-500 hover:text-red-700 font-semibold">Reset History</button>
+                    </h3>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100 text-gray-700 text-xs uppercase font-bold border-b border-gray-200">
+                                    <th class="p-3">Receipt #</th>
+                                    <th class="p-3">Date & Time</th>
+                                    <th class="p-3">Cashier</th>
+                                    <th class="p-3">Pay Mode</th>
+                                    <th class="p-3">Items Purchased</th>
+                                    <th class="p-3">Total Amount</th>
+                                    <th class="p-3">Gross Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesLogTableBody" class="text-sm divide-y divide-gray-200">
+                                <!-- Dynamic Sales Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- ADD / EDIT PRODUCT MODAL -->
+    <div id="productModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 id="productModalTitle" class="text-lg font-bold text-gray-800">Register New Stock Item</h3>
+                <button onclick="closeProductModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+            </div>
+
+            <form id="productForm" onsubmit="saveProduct(event)" class="space-y-3">
+                <input type="hidden" id="editProductId">
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Product Barcode / QR Code *</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="prodBarcode" required onkeydown="handleBarcodeKeyDown(event)" placeholder="Scan or enter barcode" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <button type="button" onclick="toggleCameraScanner('modal')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg font-bold flex items-center gap-1 whitespace-nowrap">
+                            <i class="fa-solid fa-camera"></i> Scan Camera
+                        </button>
+                        <button type="button" onclick="generateRandomBarcode()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs px-3 py-2 rounded-lg font-bold whitespace-nowrap">
+                            Auto
+                        </button>
+                    </div>
+                    <!-- Camera Scanner Container inside Modal -->
+                    <div id="modalScannerContainer" class="hidden border-2 border-dashed border-blue-400 p-2 rounded-lg bg-gray-50 text-center mt-2">
+                        <div id="modalReader" class="w-full max-w-xs mx-auto"></div>
+                        <button type="button" onclick="toggleCameraScanner('modal')" class="mt-2 text-xs text-red-600 font-bold underline">Close Scanner</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Product Name *</label>
+                    <input type="text" id="prodName" required placeholder="e.g. Fresh Cow Milk 500ml" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Entry Price / Cost (KES) *</label>
+                        <input type="number" step="0.01" id="prodEntryPrice" required placeholder="100.00" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Selling Price (KES) *</label>
+                        <input type="number" step="0.01" id="prodSellingPrice" required placeholder="130.00" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Initial Stock Count *</label>
+                        <input type="number" id="prodStock" required min="0" placeholder="50" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Expiry Date (Optional)</label>
+                        <input type="date" id="prodExpiry" class="w-full text-sm p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 border-t pt-4">
+                    <button type="button" onclick="closeProductModal()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-semibold">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- PRINTABLE RECEIPT MODAL -->
+    <div id="receiptModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            
+            <!-- PRINTABLE RECEIPT CONTENT AREA -->
+            <div id="printable-receipt" class="font-mono text-xs text-gray-800 space-y-2 border p-4 bg-yellow-50 rounded">
+                <div class="text-center border-b border-dashed border-gray-400 pb-2">
+                    <h2 class="text-base font-extrabold uppercase tracking-wide">SUPERMARKET LTD</h2>
+                    <p class="text-[10px] text-gray-600">Main Branch - Retail & Wholesale</p>
+                    <p id="receiptDate" class="text-[10px] text-gray-500 mt-1">2026-10-19 10:00 AM</p>
+                    <p id="receiptNumber" class="text-[10px] font-bold">Receipt #: RCP-1001</p>
+                    <p id="receiptCashier" class="text-[10px] text-blue-900 font-bold mt-0.5">Served By: Main Cashier</p>
+                </div>
+
+                <!-- Items Purchased Table -->
+                <div class="border-b border-dashed border-gray-400 pb-2">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="text-[10px] border-b">
+                                <th>Item</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-right">Price</th>
+                                <th class="text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="receiptItemsTable" class="divide-y divide-gray-200 text-[11px]">
+                            <!-- Receipt Lines Loaded Here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Totals -->
+                <div class="space-y-1 text-xs">
+                    <div class="flex justify-between font-bold text-sm border-t border-gray-400 pt-1">
+                        <span>TOTAL:</span>
+                        <span id="receiptTotalAmount">KES 0.00</span>
+                    </div>
+                    <div class="flex justify-between text-[11px]">
+                        <span>Payment Method:</span>
+                        <span id="receiptPayMethod" class="font-bold">CASH</span>
+                    </div>
+                    <div id="receiptMpesaRow" class="hidden flex justify-between text-[10px] text-green-700">
+                        <span>M-Pesa Ref:</span>
+                        <span id="receiptMpesaCode" class="font-bold">N/A</span>
+                    </div>
+                </div>
+
+                <div class="text-center border-t border-dashed border-gray-400 pt-2 text-[10px] text-gray-500">
+                    <p>Thank you for shopping with us!</p>
+                    <p>Goods once sold are not returnable.</p>
+                </div>
+            </div>
+
+            <!-- Receipt Action Buttons -->
+            <div class="flex gap-2">
+                <button onclick="printReceipt()" class="flex-grow py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-print"></i> Print Receipt
+                </button>
+                <button onclick="closeReceiptModal()" class="px-4 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold text-sm">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+    <script>
+        // SYSTEM STATE & LOCALSTORAGE INITIALIZATION
+        let products = JSON.parse(localStorage.getItem('supermarket_products')) || [
+            { id: 101, barcode: '6001001', name: 'Fresh Milk 500ml', entryPrice: 50, sellingPrice: 65, stock: 40, expiry: '2026-11-15' },
+            { id: 102, barcode: '6001002', name: 'White Bread 400g', entryPrice: 55, sellingPrice: 70, stock: 25, expiry: '2026-10-25' },
+            { id: 103, barcode: '6001003', name: 'Basmati Rice 2kg', entryPrice: 280, sellingPrice: 350, stock: 15, expiry: '' },
+            { id: 104, barcode: '6001004', name: 'Cooking Oil 1L', entryPrice: 210, sellingPrice: 260, stock: 30, expiry: '2027-05-01' },
+            { id: 105, barcode: '6001005', name: 'Granulated Sugar 1kg', entryPrice: 130, sellingPrice: 160, stock: 50, expiry: '' }
+        ];
+
+        let salesHistory = JSON.parse(localStorage.getItem('supermarket_sales')) || [];
+        let activeCart = [];
+        let selectedPayMode = 'CASH';
+        let managerUnlocked = false;
+        const MANAGER_PIN = '1234';
+        let html5QrCodeScanner = null;
+        let currentCashier = 'Main Cashier';
+
+        // Save State Helpers
+        function saveProductsToStorage() {
+            localStorage.setItem('supermarket_products', JSON.stringify(products));
+        }
+        function saveSalesToStorage() {
+            localStorage.setItem('supermarket_sales', JSON.stringify(salesHistory));
+        }
+
+        // CASHIER PROFILE HANDLER
+        function handleCashierChange() {
+            const select = document.getElementById('activeCashierSelect');
+            if (select.value === 'NEW') {
+                const name = prompt('Enter New Cashier Name:');
+                if (name && name.trim() !== '') {
+                    const trimmed = name.trim();
+                    const newOpt = document.createElement('option');
+                    newOpt.value = trimmed;
+                    newOpt.textContent = trimmed;
+                    select.insertBefore(newOpt, select.lastElementChild);
+                    select.value = trimmed;
+                    currentCashier = trimmed;
+                } else {
+                    select.value = currentCashier;
+                }
+            } else {
+                currentCashier = select.value;
+            }
+        }
+
+        // TAB SWITCHING LOGIC
+        function switchTab(tab) {
+            document.getElementById('tab-pos').classList.add('hidden');
+            document.getElementById('tab-inventory').classList.add('hidden');
+            document.getElementById('tab-manager').classList.add('hidden');
+
+            document.getElementById('tab-btn-pos').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-blue-800 text-white hover:bg-blue-700";
+            document.getElementById('tab-btn-inventory').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-blue-800 text-white hover:bg-blue-700";
+            document.getElementById('tab-btn-manager').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-blue-800 text-white hover:bg-blue-700";
+
+            if (tab === 'pos') {
+                document.getElementById('tab-pos').classList.remove('hidden');
+                document.getElementById('tab-btn-pos').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-yellow-500 text-gray-900 shadow font-bold";
+                document.getElementById('posSearchInput').focus();
+            } else if (tab === 'inventory') {
+                document.getElementById('tab-inventory').classList.remove('hidden');
+                document.getElementById('tab-btn-inventory').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-yellow-500 text-gray-900 shadow font-bold";
+                renderInventoryTable();
+            } else if (tab === 'manager') {
+                document.getElementById('tab-manager').classList.remove('hidden');
+                document.getElementById('tab-btn-manager').className = "px-4 py-2 rounded-lg font-medium text-sm transition bg-yellow-500 text-gray-900 shadow font-bold";
+                if (managerUnlocked) {
+                    renderManagerDashboard();
+                }
+            }
+        }
+
+        // ==================== POS / SALES LOGIC ====================
+        function renderPosProducts(filterQuery = '') {
+            const grid = document.getElementById('posProductGrid');
+            grid.innerHTML = '';
+
+            const filtered = products.filter(p => 
+                p.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
+                p.barcode.includes(filterQuery)
+            );
+
+            document.getElementById('productCountBadge').textContent = `${filtered.length} Items`;
+
+            filtered.forEach(product => {
+                const isOutOfStock = product.stock <= 0;
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-lg border flex flex-col justify-between transition cursor-pointer ${
+                    isOutOfStock ? 'bg-gray-100 border-gray-300 opacity-60' : 'bg-white border-gray-200 hover:border-blue-500 hover:shadow-md'
+                }`;
+                card.onclick = () => { if (!isOutOfStock) addToCart(product.id); };
+
+                card.innerHTML = `
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-mono">#${product.barcode}</div>
+                        <h4 class="font-bold text-xs text-gray-800 line-clamp-2">${product.name}</h4>
+                    </div>
+                    <div class="mt-2 flex justify-between items-end">
+                        <span class="text-sm font-extrabold text-blue-700">KES ${product.sellingPrice.toFixed(2)}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ${isOutOfStock ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-800'} font-semibold">
+                            ${isOutOfStock ? 'Out of stock' : product.stock + ' in stock'}
+                        </span>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function filterPosProducts() {
+            const query = document.getElementById('posSearchInput').value.trim();
+            
+            // Check if full barcode match exists for rapid scanning
+            const exactMatch = products.find(p => p.barcode === query);
+            if (exactMatch && exactMatch.stock > 0) {
+                addToCart(exactMatch.id);
+                document.getElementById('posSearchInput').value = '';
+                renderPosProducts('');
+                return;
+            }
+
+            renderPosProducts(query);
+        }
+
+        function addToCart(productId) {
+            const product = products.find(p => p.id === productId);
+            if (!product || product.stock <= 0) return;
+
+            const existing = activeCart.find(item => item.id === productId);
+            if (existing) {
+                if (existing.qty < product.stock) {
+                    existing.qty += 1;
+                } else {
+                    alert('Cannot add more. Stock limit reached!');
+                }
+            } else {
+                activeCart.push({
+                    id: product.id,
+                    barcode: product.barcode,
+                    name: product.name,
+                    sellingPrice: product.sellingPrice,
+                    entryPrice: product.entryPrice,
+                    qty: 1,
+                    maxStock: product.stock
+                });
+            }
+            renderCart();
+        }
+
+        function updateCartQty(productId, change) {
+            const item = activeCart.find(i => i.id === productId);
+            if (!item) return;
+
+            item.qty += change;
+            if (item.qty <= 0) {
+                activeCart = activeCart.filter(i => i.id !== productId);
+            } else if (item.qty > item.maxStock) {
+                item.qty = item.maxStock;
+                alert('Maximum stock count reached!');
+            }
+            renderCart();
+        }
+
+        function clearCart() {
+            activeCart = [];
+            renderCart();
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cartItemsList');
+            container.innerHTML = '';
+
+            if (activeCart.length === 0) {
+                container.innerHTML = `<p class="text-gray-400 text-center text-sm my-auto py-12">No items added to cart yet.<br>Scan or click items on the left.</p>`;
+                document.getElementById('cartTotalQty').textContent = '0';
+                document.getElementById('cartTotalAmount').textContent = 'KES 0.00';
+                return;
+            }
+
+            let totalQty = 0;
+            let grandTotal = 0;
+
+            activeCart.forEach(item => {
+                const itemTotal = item.sellingPrice * item.qty;
+                totalQty += item.qty;
+                grandTotal += itemTotal;
+
+                const row = document.createElement('div');
+                row.className = "flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200 text-xs";
+                row.innerHTML = `
+                    <div class="flex-grow pr-2">
+                        <h5 class="font-bold text-gray-800">${item.name}</h5>
+                        <p class="text-[10px] text-gray-500">KES ${item.sellingPrice.toFixed(2)} each</p>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        <button onclick="updateCartQty(${item.id}, -1)" class="w-5 h-5 bg-gray-200 text-gray-700 font-bold rounded flex items-center justify-center">-</button>
+                        <span class="font-bold w-6 text-center">${item.qty}</span>
+                        <button onclick="updateCartQty(${item.id}, 1)" class="w-5 h-5 bg-gray-200 text-gray-700 font-bold rounded flex items-center justify-center">+</button>
+                    </div>
+                    <div class="text-right w-16 font-bold text-blue-900 ml-2">
+                        KES ${itemTotal.toFixed(2)}
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            document.getElementById('cartTotalQty').textContent = totalQty;
+            document.getElementById('cartTotalAmount').textContent = `KES ${grandTotal.toFixed(2)}`;
+        }
+
+        function selectPayMode(mode) {
+            selectedPayMode = mode;
+            const btnCash = document.getElementById('payModeCash');
+            const btnMpesa = document.getElementById('payModeMpesa');
+            const mpesaBox = document.getElementById('mpesaFields');
+
+            if (mode === 'CASH') {
+                btnCash.className = "py-2 border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1";
+                btnMpesa.className = "py-2 border-2 border-gray-200 text-gray-600 font-bold rounded-lg text-sm flex items-center justify-center gap-1 hover:border-green-500";
+                mpesaBox.classList.add('hidden');
+            } else {
+                btnMpesa.className = "py-2 border-2 border-green-600 bg-green-50 text-green-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1";
+                btnCash.className = "py-2 border-2 border-gray-200 text-gray-600 font-bold rounded-lg text-sm flex items-center justify-center gap-1";
+                mpesaBox.classList.remove('hidden');
+            }
+        }
+
+        function triggerMpesaStkPush() {
+            const phone = document.getElementById('mpesaPhone').value.trim();
+            if (!phone) {
+                alert('Please enter a valid customer phone number.');
+                return;
+            }
+            alert(`STK Push Prompt sent to ${phone}! Customer should enter M-Pesa PIN on their phone.`);
+            document.getElementById('mpesaRefCode').value = 'QX' + Math.floor(10000000 + Math.random() * 90000000);
+        }
+
+        function completeCheckout() {
+            if (activeCart.length === 0) {
+                alert('Cart is empty! Add items before checkout.');
+                return;
+            }
+
+            let mpesaCode = '';
+            if (selectedPayMode === 'MPESA') {
+                mpesaCode = document.getElementById('mpesaRefCode').value.trim();
+                if (!mpesaCode) {
+                    alert('Please enter the M-Pesa confirmation reference code.');
+                    return;
+                }
+            }
+
+            let totalSalesAmount = 0;
+            let totalProfitAmount = 0;
+
+            activeCart.forEach(cartItem => {
+                const prod = products.find(p => p.id === cartItem.id);
+                if (prod) {
+                    prod.stock -= cartItem.qty;
+                }
+                const lineTotal = cartItem.sellingPrice * cartItem.qty;
+                const lineCost = cartItem.entryPrice * cartItem.qty;
+                totalSalesAmount += lineTotal;
+                totalProfitAmount += (lineTotal - lineCost);
+            });
+
+            const saleRecord = {
+                receiptNo: 'RCP-' + Math.floor(10000 + Math.random() * 90000),
+                timestamp: new Date().toLocaleString(),
+                dateOnly: new Date().toISOString().split('T')[0],
+                cashier: currentCashier,
+                items: [...activeCart],
+                totalAmount: totalSalesAmount,
+                profitAmount: totalProfitAmount,
+                payMode: selectedPayMode,
+                mpesaCode: mpesaCode
+            };
+
+            salesHistory.unshift(saleRecord);
+            saveProductsToStorage();
+            saveSalesToStorage();
+
+            showReceiptModal(saleRecord);
+
+            activeCart = [];
+            document.getElementById('mpesaRefCode').value = '';
+            document.getElementById('mpesaPhone').value = '';
+            renderCart();
+            renderPosProducts();
+            checkExpiryAlerts();
+        }
+
+        function showReceiptModal(saleRecord) {
+            document.getElementById('receiptNumber').textContent = `Receipt #: ${saleRecord.receiptNo}`;
+            document.getElementById('receiptDate').textContent = saleRecord.timestamp;
+            document.getElementById('receiptCashier').textContent = `Served By: ${saleRecord.cashier}`;
+            document.getElementById('receiptTotalAmount').textContent = `KES ${saleRecord.totalAmount.toFixed(2)}`;
+            document.getElementById('receiptPayMethod').textContent = saleRecord.payMode;
+
+            const mpesaRow = document.getElementById('receiptMpesaRow');
+            if (saleRecord.payMode === 'MPESA') {
+                mpesaRow.classList.remove('hidden');
+                document.getElementById('receiptMpesaCode').textContent = saleRecord.mpesaCode;
+            } else {
+                mpesaRow.classList.add('hidden');
+            }
+
+            const table = document.getElementById('receiptItemsTable');
+            table.innerHTML = '';
+            saleRecord.items.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-0.5 font-bold">${item.name}</td>
+                    <td class="text-center">${item.qty}</td>
+                    <td class="text-right">${item.sellingPrice.toFixed(2)}</td>
+                    <td class="text-right">${(item.sellingPrice * item.qty).toFixed(2)}</td>
+                `;
+                table.appendChild(row);
+            });
+
+            document.getElementById('receiptModal').classList.remove('hidden');
+        }
+
+        function closeReceiptModal() {
+            document.getElementById('receiptModal').classList.add('hidden');
+        }
+
+        function printReceipt() {
+            window.print();
+        }
+
+        // CAMERA BARCODE SCANNER INTEGRATION (Supports POS and Modal Registration)
+        function toggleCameraScanner(targetContext = 'pos') {
+            const containerId = targetContext === 'pos' ? 'scannerContainer' : 'modalScannerContainer';
+            const readerId = targetContext === 'pos' ? 'reader' : 'modalReader';
+            const container = document.getElementById(containerId);
+
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                html5QrCodeScanner = new Html5QrcodeScanner(readerId, { fps: 10, qrbox: 250 });
+                html5QrCodeScanner.render((decodedText) => {
+                    if (targetContext === 'pos') {
+                        document.getElementById('posSearchInput').value = decodedText;
+                        filterPosProducts();
+                    } else {
+                        document.getElementById('prodBarcode').value = decodedText;
+                        document.getElementById('prodName').focus();
+                    }
+                    toggleCameraScanner(targetContext);
+                }, (error) => {});
+            } else {
+                container.classList.add('hidden');
+                if (html5QrCodeScanner) {
+                    html5QrCodeScanner.clear();
+                }
+            }
+        }
+
+        // Prevent hardware scanner Enter key from prematurely submitting registration form
+        function handleBarcodeKeyDown(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('prodName').focus();
+            }
+        }
+
+
+        // ==================== INVENTORY LOGIC ====================
+        function renderInventoryTable() {
+            const tbody = document.getElementById('inventoryTableBody');
+            tbody.innerHTML = '';
+
+            const query = document.getElementById('inventorySearchInput')?.value.toLowerCase() || '';
+
+            const filtered = products.filter(p => 
+                p.name.toLowerCase().includes(query) || 
+                p.barcode.includes(query)
+            );
+
+            const today = new Date().toISOString().split('T')[0];
+
+            filtered.forEach(p => {
+                let expiryStatusHtml = '<span class="text-gray-400 text-xs">N/A</span>';
+                if (p.expiry) {
+                    const diffDays = Math.ceil((new Date(p.expiry) - new Date(today)) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) {
+                        expiryStatusHtml = `<span class="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded font-bold">Expired</span>`;
+                    } else if (diffDays <= 30) {
+                        expiryStatusHtml = `<span class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded font-bold">Expiring (${diffDays}d)</span>`;
+                    } else {
+                        expiryStatusHtml = `<span class="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded font-semibold">Valid</span>`;
+                    }
+                }
+
+                const row = document.createElement('tr');
+                row.className = "hover:bg-gray-50 border-b border-gray-100";
+                row.innerHTML = `
+                    <td class="p-3 font-mono text-xs font-bold text-gray-600">${p.barcode}</td>
+                    <td class="p-3 font-bold text-gray-800">${p.name}</td>
+                    <td class="p-3 text-gray-600 font-mono">KES ${p.entryPrice.toFixed(2)}</td>
+                    <td class="p-3 font-bold text-blue-800 font-mono">KES ${p.sellingPrice.toFixed(2)}</td>
+                    <td class="p-3 font-bold ${p.stock <= 5 ? 'text-red-600' : 'text-gray-800'}">${p.stock}</td>
+                    <td class="p-3 text-xs text-gray-600">${p.expiry || '—'}</td>
+                    <td class="p-3">${expiryStatusHtml}</td>
+                    <td class="p-3 text-right space-x-1">
+                        <button onclick="editProduct(${p.id})" class="text-blue-600 hover:text-blue-800 p-1"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button onclick="deleteProduct(${p.id})" class="text-red-500 hover:text-red-700 p-1"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function openAddProductModal() {
+            document.getElementById('productForm').reset();
+            document.getElementById('editProductId').value = '';
+            document.getElementById('productModalTitle').textContent = 'Register New Stock Item';
+            document.getElementById('productModal').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('prodBarcode').focus();
+            }, 100);
+        }
+
+        function closeProductModal() {
+            document.getElementById('productModal').classList.add('hidden');
+            const modalScanner = document.getElementById('modalScannerContainer');
+            if (!modalScanner.classList.contains('hidden')) {
+                toggleCameraScanner('modal');
+            }
+        }
+
+        function generateRandomBarcode() {
+            document.getElementById('prodBarcode').value = '600' + Math.floor(100000 + Math.random() * 900000);
+        }
+
+        function saveProduct(e) {
+            e.preventDefault();
+            const editId = document.getElementById('editProductId').value;
+            const barcode = document.getElementById('prodBarcode').value.trim();
+            const name = document.getElementById('prodName').value.trim();
+            const entryPrice = parseFloat(document.getElementById('prodEntryPrice').value);
+            const sellingPrice = parseFloat(document.getElementById('prodSellingPrice').value);
+            const stock = parseInt(document.getElementById('prodStock').value);
+            const expiry = document.getElementById('prodExpiry').value;
+
+            if (editId) {
+                const prod = products.find(p => p.id === parseInt(editId));
+                if (prod) {
+                    prod.barcode = barcode;
+                    prod.name = name;
+                    prod.entryPrice = entryPrice;
+                    prod.sellingPrice = sellingPrice;
+                    prod.stock = stock;
+                    prod.expiry = expiry;
+                }
+            } else {
+                const newProd = {
+                    id: Date.now(),
+                    barcode: barcode,
+                    name: name,
+                    entryPrice: entryPrice,
+                    sellingPrice: sellingPrice,
+                    stock: stock,
+                    expiry: expiry
+                };
+                products.push(newProd);
+            }
+
+            saveProductsToStorage();
+            closeProductModal();
+            renderInventoryTable();
+            renderPosProducts();
+            checkExpiryAlerts();
+        }
+
+        function editProduct(id) {
+            const prod = products.find(p => p.id === id);
+            if (!prod) return;
+
+            document.getElementById('editProductId').value = prod.id;
+            document.getElementById('prodBarcode').value = prod.barcode;
+            document.getElementById('prodName').value = prod.name;
+            document.getElementById('prodEntryPrice').value = prod.entryPrice;
+            document.getElementById('prodSellingPrice').value = prod.sellingPrice;
+            document.getElementById('prodStock').value = prod.stock;
+            document.getElementById('prodExpiry').value = prod.expiry || '';
+
+            document.getElementById('productModalTitle').textContent = 'Edit Product Stock';
+            document.getElementById('productModal').classList.remove('hidden');
+        }
+
+        function deleteProduct(id) {
+            if (confirm('Are you sure you want to delete this product item?')) {
+                products = products.filter(p => p.id !== id);
+                saveProductsToStorage();
+                renderInventoryTable();
+                renderPosProducts();
+                checkExpiryAlerts();
+            }
+        }
+
+        function checkExpiryAlerts() {
+            const today = new Date().toISOString().split('T')[0];
+            let warningCount = 0;
+
+            products.forEach(p => {
+                if (p.expiry) {
+                    const diffDays = Math.ceil((new Date(p.expiry) - new Date(today)) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 30) warningCount++;
+                }
+            });
+
+            const banner = document.getElementById('expiryAlertBanner');
+            if (warningCount > 0) {
+                banner.classList.remove('hidden');
+                document.getElementById('expiryAlertText').textContent = `Warning: ${warningCount} item(s) in inventory are expired or expiring within 30 days!`;
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+
+        // ==================== MANAGER DASHBOARD & SECURITY LOGIC ====================
+        function unlockManagerPanel() {
+            const pin = document.getElementById('managerPinInput').value;
+            if (pin === MANAGER_PIN) {
+                managerUnlocked = true;
+                document.getElementById('managerLockScreen').classList.add('hidden');
+                document.getElementById('managerContent').classList.remove('hidden');
+                document.getElementById('managerLockBadge').innerHTML = `<i class="fa-solid fa-unlock text-green-400"></i>`;
+                renderManagerDashboard();
+            } else {
+                alert('Incorrect Security PIN!');
+            }
+        }
+
+        function lockManagerPanel() {
+            managerUnlocked = false;
+            document.getElementById('managerLockScreen').classList.remove('hidden');
+            document.getElementById('managerContent').classList.add('hidden');
+            document.getElementById('managerPinInput').value = '';
+            document.getElementById('managerLockBadge').innerHTML = `<i class="fa-solid fa-lock text-yellow-400"></i>`;
+        }
+
+        function renderManagerDashboard() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            
+            let todaySalesTotal = 0;
+            let todayProfitTotal = 0;
+            let todayCashTotal = 0;
+            let todayMpesaTotal = 0;
+            let todayCount = 0;
+
+            salesHistory.forEach(sale => {
+                if (sale.dateOnly === todayStr) {
+                    todaySalesTotal += sale.totalAmount;
+                    todayProfitTotal += sale.profitAmount;
+                    todayCount++;
+
+                    if (sale.payMode === 'CASH') todayCashTotal += sale.totalAmount;
+                    if (sale.payMode === 'MPESA') todayMpesaTotal += sale.totalAmount;
+                }
+            });
+
+            document.getElementById('statTodaySales').textContent = `KES ${todaySalesTotal.toFixed(2)}`;
+            document.getElementById('statTodayProfit').textContent = `KES ${todayProfitTotal.toFixed(2)}`;
+            document.getElementById('statTodayCash').textContent = `KES ${todayCashTotal.toFixed(2)}`;
+            document.getElementById('statTodayMpesa').textContent = `KES ${todayMpesaTotal.toFixed(2)}`;
+            document.getElementById('statTodayCount').textContent = `${todayCount} Transactions today`;
+
+            // Sales Log Table
+            const tbody = document.getElementById('salesLogTableBody');
+            tbody.innerHTML = '';
+
+            salesHistory.forEach(sale => {
+                const itemListStr = sale.items.map(i => `${i.name} (x${i.qty})`).join(', ');
+                const row = document.createElement('tr');
+                row.className = "hover:bg-gray-50 border-b border-gray-100";
+                row.innerHTML = `
+                    <td class="p-3 font-mono font-bold text-xs text-blue-900">${sale.receiptNo}</td>
+                    <td class="p-3 text-xs text-gray-500">${sale.timestamp}</td>
+                    <td class="p-3 text-xs font-bold text-gray-700">${sale.cashier || 'Main Cashier'}</td>
+                    <td class="p-3 text-xs font-semibold">${sale.payMode} ${sale.mpesaCode ? `(${sale.mpesaCode})` : ''}</td>
+                    <td class="p-3 text-xs text-gray-600 max-w-xs truncate">${itemListStr}</td>
+                    <td class="p-3 font-bold text-gray-900 font-mono">KES ${sale.totalAmount.toFixed(2)}</td>
+                    <td class="p-3 font-bold text-green-700 font-mono">KES ${sale.profitAmount.toFixed(2)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function clearSalesHistory() {
+            if (confirm('Are you sure you want to clear all sales transaction logs? This action cannot be undone.')) {
+                salesHistory = [];
+                saveSalesToStorage();
+                renderManagerDashboard();
+            }
+        }
+
+        // INITIAL SYSTEM LAUNCH
+        window.onload = function() {
+            renderPosProducts();
+            renderCart();
+            checkExpiryAlerts();
+        };
+    </script>
+</body>
+</html>
